@@ -1,4 +1,5 @@
 ﻿using GameNet.Common;
+using GameNet.Data;
 using GameNet.Server;
 using System;
 using System.Security.Cryptography.X509Certificates;
@@ -11,6 +12,8 @@ class Program
 
     static async Task Main()
     {
+        await Database.InitializeAsync("data/gamenet.db");
+
         var options = new ServerOptions
         {
             BindAddress = System.Net.IPAddress.Any,
