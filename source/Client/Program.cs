@@ -11,12 +11,8 @@ class Program
     static void Main()
     {
         Thread.Sleep(200);
-        ClientProgram gameProgram = new ClientProgram();
-        gameProgram.Start();
-
-        while (true)
-        { Thread.Sleep(100); }
-
+        NetworkGame game = new NetworkGame();
+        game.Run();
     }
 
     

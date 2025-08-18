@@ -20,9 +20,11 @@ namespace GameNet.Common
 
     public enum DataType : int
     {
+        Invalid = -1,
         Chat = 0,
         GameAction = 10,
-        GameObject = 11,
+        LoadComplete = 11,
+        GameObject = 31,
     }
 
 
@@ -30,20 +32,28 @@ namespace GameNet.Common
     {
         public GameDataResult(byte[] data)
         {
-            int index = 0;
-            DataType = (DataType)BitConverter.ToUInt32(data, index); 
-            index += 4;
-            switch (DataType)
+            if (data.Length < 4)
             {
-                case DataType.Chat:
-                    UntypedObject = Encoding.UTF8.GetString(data, index, data.Length - 4);
-                    break;
-                default:
-                    byte[] sub = new byte[data.Length - 4];
-                    Array.Copy(data, 4, sub, 0, sub.Length);
-                    UntypedObject = sub;
-                    break;
+                DataType = DataType.Invalid;
+                UntypedObject = null;
             }
+            else
+            {
+                int index = 0;
+                DataType = (DataType)BitConverter.ToUInt32(data, index);
+                index += 4;
+                switch (DataType)
+                {
+                    case DataType.Chat:
+                        UntypedObject = Encoding.UTF8.GetString(data, index, data.Length - 4);
+                        break;
+                    default:
+                        byte[] sub = new byte[data.Length - 4];
+                        Array.Copy(data, 4, sub, 0, sub.Length);
+                        UntypedObject = sub;
+                        break;
+                }
+            }   
         }
 
         public DataType DataType { get; private set; }

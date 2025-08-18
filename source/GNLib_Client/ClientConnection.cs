@@ -34,39 +34,53 @@ namespace GameNet.Client
 
         public event Action<MessageType, byte[]> DataReceived;
         public event Action Disconnected;
+        public event Action Connected;
+        public event Action<Exception> ConnectFail;
+
 
         public ClientConnection(ClientOptions options) => _opt = options ?? new ClientOptions();
 
         public async Task ConnectAsync()
         {
-            _cts = new CancellationTokenSource();
-            _tcp = new TcpClient();
-            await _tcp.ConnectAsync(_opt.Host, _opt.Port).ConfigureAwait(false);
+            try
+            {
+                _cts = new CancellationTokenSource();
+                _tcp = new TcpClient();
+                await _tcp.ConnectAsync(_opt.Host, _opt.Port).ConfigureAwait(false);
 
-            var net = _tcp.GetStream();
-            if (_opt.UseTls && !_opt.AllowInvalidServerCertForTesting)
-            {
-                var ssl = new SslStream(net, false, (sender, cert, chain, errs) => false);
-                await ssl.AuthenticateAsClientAsync(_opt.TlsTargetHost, null, SslProtocols.Tls12, checkCertificateRevocation: true)
-                         .ConfigureAwait(false);
-                _stream = ssl;
+                var net = _tcp.GetStream();
+                if (_opt.UseTls && !_opt.AllowInvalidServerCertForTesting)
+                {
+                    var ssl = new SslStream(net, false, (sender, cert, chain, errs) => false);
+                    await ssl.AuthenticateAsClientAsync(_opt.TlsTargetHost, null, SslProtocols.Tls12, checkCertificateRevocation: true)
+                             .ConfigureAwait(false);
+                    _stream = ssl;
+                }
+                else if (_opt.UseTls && _opt.AllowInvalidServerCertForTesting)
+                {
+                    var ssl = new SslStream(net, false, (sender, cert, chain, errs) => true);
+                    await ssl.AuthenticateAsClientAsync(_opt.TlsTargetHost, null, SslProtocols.Tls12, checkCertificateRevocation: false)
+                             .ConfigureAwait(false);
+                    _stream = ssl;
+                    Console.WriteLine("[Client] WARNING: accepting invalid server certificate (testing only).");
+                }
+                else
+                {
+                    _stream = net;
+                    Console.WriteLine("[Client] WARNING: Insecure (non-TLS) connection (testing only).");
+                }
+
+                _ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
+                _ = Task.Run(() => HeartbeatLoopAsync(_cts.Token));
+                Connected?.Invoke();
             }
-            else if (_opt.UseTls && _opt.AllowInvalidServerCertForTesting)
+            catch (Exception ex)
             {
-                var ssl = new SslStream(net, false, (sender, cert, chain, errs) => true);
-                await ssl.AuthenticateAsClientAsync(_opt.TlsTargetHost, null, SslProtocols.Tls12, checkCertificateRevocation: false)
-                         .ConfigureAwait(false);
-                _stream = ssl;
-                Console.WriteLine("[Client] WARNING: accepting invalid server certificate (testing only).");
-            }
-            else
-            {
-                _stream = net;
-                Console.WriteLine("[Client] WARNING: Insecure (non-TLS) connection (testing only).");
+                //Console.WriteLine($"{ex.GetType()}!\n{ex.Message}");
+                ConnectFail?.Invoke(ex);
             }
 
-            _ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
-            _ = Task.Run(() => HeartbeatLoopAsync(_cts.Token));
+            
         }
 
         public async Task DisconnectAsync()

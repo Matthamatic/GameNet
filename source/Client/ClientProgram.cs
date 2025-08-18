@@ -5,94 +5,105 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 
-public class ClientProgram
+public enum AuthEventType
 {
-    ClientConnection client;
+    RegistraitionComplete,
+    RegistraitionFail,
+    AuthComplete,
+    AuthFail
+}
 
-    bool isConnected
-    { get { return client != null && client.IsConnected; } }
+public class ClientProgram : IDisposable
+{
+    public event Action<GameDataResult> DataReceived;
+    public event Action<AuthEventType, string> AuthEvent;
 
-    public void Start()
+    public ClientConnection Client { get; private set; }
+    public bool Stopped { get; private set; }
+    public bool isConnected => (Client != null && Client.IsConnected);
+
+    public ClientProgram()
     {
-        _ = doConnect();
-    }
-
-    async Task doConnect()
-    {
-        client = new ClientConnection(new ClientOptions
+        Stopped = false;
+        Client = new ClientConnection(new ClientOptions
         {
             Host = "127.0.0.1",
             Port = 9000,
             UseTls = false,                    // set true with a valid server cert
             AllowInvalidServerCertForTesting = true
         });
-        client.DataReceived += OnDataReceived;
-        await client.ConnectAsync();
-        Console.WriteLine("Connected!");
-        await doAuth();
-
-        // Auth (stub always OK)
-        //await client.LoginAsync("Alice", "supersecret");
-
-        // Send opaque data payload
-        //
-
-        //byte[] data = File.ReadAllBytes("./Diablo.iso");
-        //await client.SendDataAsync(data);
-
+        Client.DataReceived += OnDataReceived;
+        Client.Disconnected += OnDisconnected;
     }
 
-    async Task doAuth()
+    public void Start()
     {
-        Console.WriteLine("Press N to register as a new user\n" +
-                "Press L to log in\n" +
-                "Press Q to quit\n");
-
-        switch (Console.ReadKey().Key)
-        {
-            case ConsoleKey.N:
-                await doRegister();
-                break;
-            case ConsoleKey.L:
-                await doLogin();
-                break;
-            case ConsoleKey.Q:
-                await doDisconnect();
-                Environment.Exit(0);
-                break;
-        }
+        doConnect();
     }
-
-    async Task doLogin()
+    public void Stop()
     {
-        Console.WriteLine("Enter Name:");
-        string name = Console.ReadLine().Trim();
-        Console.WriteLine("Enter Password:");
-        string pass = Console.ReadLine().Trim();
-        await client.LoginAsync(name, pass);
+        Stopped = true;
+        Dispose();
     }
-    async Task doRegister()
-    {
-        Console.WriteLine("Enter a name:");
-        string name = Console.ReadLine().Trim();
-        Console.WriteLine("Enter a password:");
-        string pass = Console.ReadLine().Trim();
-        await client.RegisterAsync(name, pass);
-    }
-    async Task doDisconnect()
-    { await client.DisconnectAsync(); }
-
     public void SendText(string text)
     {
         List<byte> data = new List<byte>();
         data.AddRange(BitConverter.GetBytes((int)DataType.Chat));
         data.AddRange(Encoding.UTF8.GetBytes(text));
 
-        _ = client.SendDataAsync(data.ToArray()); 
+        _ = Client.SendDataAsync(data.ToArray());
     }
+
+    public void Dispose()
+    {
+        if (!Stopped) {
+            Console.WriteLine("Warning! The Client program was disposed before stop was called on it.");
+            Stopped = true; 
+        }
+
+        if (Client != null)
+        {
+            Client.DataReceived -= OnDataReceived;
+            Client.Disconnected -= OnDisconnected;
+            if (Client.IsConnected)
+            {
+                _ = Client.DisconnectAsync();
+                while (Client.IsConnected)
+                { Thread.Sleep(100); }
+            }
+            Client.Dispose();
+            Client = null;
+        }
+    }
+
+    /// <summary>
+    /// Methods to manage the relationship with the server
+    /// That is, internal stuff relating to Connection & Auth
+    /// </summary>
+    #region Internal Connection & Auth Methods
+    void doConnect()
+    { _ = Client.ConnectAsync(); }
+    
+    private void OnDisconnected()
+    {
+
+        if (!Stopped)
+        {
+            Thread.Sleep(1000);
+            doConnect();
+        }
+        else
+        { 
+            Console.WriteLine("Disconnected!(Stopping)"); 
+        }
+    }
+
+    #endregion Internal Connection & Auth Methods
+
 
     private void OnDataReceived(MessageType type, byte[] payload)
     {
@@ -105,13 +116,12 @@ public class ClientProgram
                     bool authenticationResult = br.ReadInt32() == 1;
                     if (authenticationResult)
                     { 
-                        Console.WriteLine("Authenticated!");
-                        SendText("Hooo!");
+                        //Console.WriteLine("Authenticated!");
+                        AuthEvent?.Invoke(AuthEventType.AuthComplete, "");
                     }
                     else
                     {
-                        Console.WriteLine("Failed to Authenticate!");
-                        _ = doAuth(); 
+                        AuthEvent?.Invoke(AuthEventType.AuthFail, "Failed to Authenticate!");
                     }
                 }
                 break;
@@ -122,32 +132,28 @@ public class ClientProgram
                     bool registerResult = br.ReadInt32() == 1;
                     if (registerResult)
                     {
-                        Console.WriteLine("Registered!");
-                        _ = doLogin();
+                        AuthEvent?.Invoke(AuthEventType.RegistraitionComplete, "");
                     }
                     else
                     {
-                        Console.WriteLine("Failed to Register!");
-                        _ = doAuth();
+                        AuthEvent?.Invoke(AuthEventType.RegistraitionFail, "Failed to Register! Name or password issue!");
                     }
                 }
                 break;
+            case MessageType.Data:
+                GameDataResult result = new GameDataResult(payload);
+                if (result.DataType != DataType.Invalid)
+                { DataReceived?.Invoke(result); }
+                else
+                { Console.WriteLine("Invalid data received from server"); }
+                break;
             default:
-
-                if (payload.Length > 4)
-                {
-                    GameDataResult result = new GameDataResult(payload);
-                    if (result.DataType == DataType.Chat)
-                    { Console.WriteLine($"[Client] Received type={type}, {result.DataType} text='{(string)result.UntypedObject}'"); }
-                    else
-                    { Console.WriteLine($"[Client] Received type={type}, {result.DataType}"); }// text='{Encoding.UTF8.GetString(payload ?? Array.Empty<byte>())}'"); }
-                }
-
-                
+                Console.WriteLine($"Received {type} data");
                 break;
         }
 
         
     }
+    
 }
 
