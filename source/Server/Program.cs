@@ -1,13 +1,11 @@
 ﻿using GameNet.Common;
-using GameNet.Data;
-using GameNet.Server;
+using GameNetServer;
+using GameNetServer.Data;
 using System;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 class Program
 {
-
     static Server server;
 
     static async Task Main()
@@ -41,6 +39,11 @@ class Program
     static private void OnServerDataReceived(Guid id, MessageType type, byte[] payload)
     {
         Console.WriteLine($"[Server] Data from {id} type={type} len={payload?.Length ?? 0}");
+
+        switch (type)
+        {
+            
+        }
 
         if (type == MessageType.Data)
         { Send(id,type,payload); }

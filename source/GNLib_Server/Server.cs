@@ -9,8 +9,11 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Security;
+using GameNet.Data;
+using System.Collections.Generic;
+using GameNetServer.Data;
 
-namespace GameNet.Server
+namespace GameNetServer
 {
     public sealed class ServerOptions
     {
@@ -257,11 +260,11 @@ namespace GameNet.Server
                             break;
 
                         case MessageType.AuthRequest:
-                            HandleAuthRequest(payload);
+                            await HandleAuthRequest(payload);
                             break;
 
                         case MessageType.RegisterRequest:
-                            HandleRegisterRequest(payload);
+                            await HandleRegisterRequest(payload);
                             break;
 
                         default:
@@ -306,13 +309,15 @@ namespace GameNet.Server
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Server] {_id} receive error: {ex.Message}");
+                    Console.WriteLine($"ERROR reading stream in ClientSession!\n" +
+                        $"GUID: {_id}\n" +
+                        $"{ex.Message}");
                     break;
                 }
             }
         }
 
-        private void HandleAuthRequest(byte[] payload)
+        private async Task HandleAuthRequest(byte[] payload)
         {
             using (var ms = new MemoryStream(payload ?? Array.Empty<byte>()))
             using (var br = new BinaryReader(ms))
@@ -320,34 +325,37 @@ namespace GameNet.Server
                 string user = Protocol.ReadLPString(br);
                 string passHash = Protocol.ReadLPString(br);
 
-                bool ok = ClientAuth.Authenticate(user, passHash);
-                IsAuthenticated = ok;
+                var result = await AuthService.LoginAsync(user, passHash);
+                IsAuthenticated = result.Accepted;
 
                 using (var msOut = new MemoryStream())
                 using (var bw = new BinaryWriter(msOut))
                 {
-                    bw.Write(ok ? 1 : 0);
+                    bw.Write(result.Accepted ? 1 : 0);
+                    Protocol.WriteLPString(bw, result.Message);
                     Protocol.SendAsync(_stream, MessageType.AuthResponse, msOut.ToArray(), NextSeq(), Protocol.FlagNone, _cts.Token).Wait();
                 }
             }
         }
 
-        private void HandleRegisterRequest(byte[] payload)
+        private async Task HandleRegisterRequest(byte[] payload)
         {
             using (var ms = new MemoryStream(payload ?? Array.Empty<byte>()))
             using (var br = new BinaryReader(ms))
             {
                 string user = Protocol.ReadLPString(br);
-                string passHash = Protocol.ReadLPString(br);
+                string pass = Protocol.ReadLPString(br);
                 string email = Protocol.ReadLPString(br);
                 string info = Protocol.ReadLPString(br);
 
-                bool ok = ClientAuth.Register(user, passHash, email, info);
+                var result = await AuthService.RegisterAsync(user, pass);
+                //bool ok = AuthService.Register(user, passHash, email, info);
 
                 using (var msOut = new MemoryStream())
                 using (var bw = new BinaryWriter(msOut))
                 {
-                    bw.Write(ok ? 1 : 0);
+                    bw.Write(result.Accepted ? 1 : 0);
+                    Protocol.WriteLPString(bw, result.Message);
                     Protocol.SendAsync(_stream, MessageType.RegisterResponse, msOut.ToArray(), NextSeq(), Protocol.FlagNone, _cts.Token).Wait();
                 }
             }

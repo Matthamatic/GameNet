@@ -151,26 +151,24 @@ namespace GameNet.Client
         private int NextSeq() => System.Threading.Interlocked.Increment(ref _seqSend);
 
         // ------------ Public API ------------
-        public async Task LoginAsync(string username, string passwordOrHash, bool alreadyHashed = false)
+        public async Task LoginAsync(string username, string password)
         {
-            var hash = alreadyHashed ? passwordOrHash : ClientAuth.Sha256Hex(passwordOrHash ?? string.Empty);
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms))
             {
                 Protocol.WriteLPString(bw, username ?? "");
-                Protocol.WriteLPString(bw, hash);
+                Protocol.WriteLPString(bw, password);
                 await Protocol.SendAsync(_stream, MessageType.AuthRequest, ms.ToArray(), NextSeq(), Protocol.FlagNone, _cts.Token).ConfigureAwait(false);
             }
         }
 
-        public async Task RegisterAsync(string username, string passwordOrHash, string email = "", string info = "", bool alreadyHashed = false)
+        public async Task RegisterAsync(string username, string password, string email = "", string info = "", bool alreadyHashed = false)
         {
-            var hash = alreadyHashed ? passwordOrHash : ClientAuth.Sha256Hex(passwordOrHash ?? string.Empty);
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms))
             {
                 Protocol.WriteLPString(bw, username ?? "");
-                Protocol.WriteLPString(bw, hash);
+                Protocol.WriteLPString(bw, password);
                 Protocol.WriteLPString(bw, email ?? "");
                 Protocol.WriteLPString(bw, info ?? "");
                 await Protocol.SendAsync(_stream, MessageType.RegisterRequest, ms.ToArray(), NextSeq(), Protocol.FlagNone, _cts.Token).ConfigureAwait(false);

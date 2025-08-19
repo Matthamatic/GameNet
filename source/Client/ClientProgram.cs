@@ -9,23 +9,43 @@ using System.Threading;
 using System.Threading.Tasks;
 
 
-public enum AuthEventType
+public enum ClientEventType
 {
     RegistraitionComplete,
     RegistraitionFail,
     AuthComplete,
-    AuthFail
+    AuthFail,
+    ConnectFail
 }
 
 public class ClientProgram : IDisposable
 {
+    const int CONNECTTRYLIMIT = 10;
+    public bool AutoReconnect
+    {
+        get { return _autoReconnect; }
+        set
+        {
+            if (value)
+            {
+                if (Client != null && !Client.IsConnected)
+                { Start(); }
+            }
+            _autoReconnect = value;
+        }
+    }
+    private bool _autoReconnect = true;
+
     public event Action<GameDataResult> DataReceived;
-    public event Action<AuthEventType, string> AuthEvent;
+    public event Action<ClientEventType, string> ClientEvent;
 
     public ClientConnection Client { get; private set; }
     public bool Stopped { get; private set; }
+    
+
     public bool isConnected => (Client != null && Client.IsConnected);
 
+    int connectTryCount = 0;
     public ClientProgram()
     {
         Stopped = false;
@@ -38,11 +58,15 @@ public class ClientProgram : IDisposable
         });
         Client.DataReceived += OnDataReceived;
         Client.Disconnected += OnDisconnected;
+        Client.Connected += OnConnected;
+        Client.ConnectFail += OnFailConnect;
     }
 
     public void Start()
     {
-        doConnect();
+        if (Client.IsConnected)
+        { return; }
+        _ = Client.ConnectAsync();
     }
     public void Stop()
     {
@@ -69,6 +93,9 @@ public class ClientProgram : IDisposable
         {
             Client.DataReceived -= OnDataReceived;
             Client.Disconnected -= OnDisconnected;
+            Client.Connected -= OnConnected;
+            Client.ConnectFail -= OnFailConnect;
+
             if (Client.IsConnected)
             {
                 _ = Client.DisconnectAsync();
@@ -85,21 +112,45 @@ public class ClientProgram : IDisposable
     /// That is, internal stuff relating to Connection & Auth
     /// </summary>
     #region Internal Connection & Auth Methods
-    void doConnect()
-    { _ = Client.ConnectAsync(); }
-    
+
+    void doReconnect(int delaySeconds)
+    {
+        connectTryCount++;
+        if (connectTryCount > CONNECTTRYLIMIT)
+        {
+            ClientEvent?.Invoke(ClientEventType.ConnectFail, "Connection retry limit reached.");
+        }
+        else
+        {
+            Thread reconnectThread = new Thread(() => {
+                Thread.Sleep(delaySeconds * 1000);
+                Start();
+            });
+            reconnectThread.Start();
+        }
+    }
+
+    private void OnConnected()
+    {
+        // Reset the connect try count
+        connectTryCount = 0;
+    }
     private void OnDisconnected()
     {
 
-        if (!Stopped)
-        {
-            Thread.Sleep(1000);
-            doConnect();
-        }
+        if (!Stopped && AutoReconnect)
+        { doReconnect(5); }
         else
         { 
             Console.WriteLine("Disconnected!(Stopping)"); 
         }
+    }
+    private void OnFailConnect(Exception ex)
+    {
+        if (AutoReconnect)
+        { doReconnect(10); }
+        else 
+        { ClientEvent?.Invoke(ClientEventType.ConnectFail, "Could not connect."); }
     }
 
     #endregion Internal Connection & Auth Methods
@@ -114,14 +165,15 @@ public class ClientProgram : IDisposable
                 using (var br = new BinaryReader(ms))
                 {
                     bool authenticationResult = br.ReadInt32() == 1;
+                    string message = Protocol.ReadLPString(br);
                     if (authenticationResult)
-                    { 
+                    {
                         //Console.WriteLine("Authenticated!");
-                        AuthEvent?.Invoke(AuthEventType.AuthComplete, "");
+                        ClientEvent?.Invoke(ClientEventType.AuthComplete, message);
                     }
                     else
                     {
-                        AuthEvent?.Invoke(AuthEventType.AuthFail, "Failed to Authenticate!");
+                        ClientEvent?.Invoke(ClientEventType.AuthFail, message);
                     }
                 }
                 break;
@@ -130,13 +182,14 @@ public class ClientProgram : IDisposable
                 using (var br = new BinaryReader(ms))
                 {
                     bool registerResult = br.ReadInt32() == 1;
+                    string message = Protocol.ReadLPString(br);
                     if (registerResult)
                     {
-                        AuthEvent?.Invoke(AuthEventType.RegistraitionComplete, "");
+                        ClientEvent?.Invoke(ClientEventType.RegistraitionComplete, message);
                     }
                     else
                     {
-                        AuthEvent?.Invoke(AuthEventType.RegistraitionFail, "Failed to Register! Name or password issue!");
+                        ClientEvent?.Invoke(ClientEventType.RegistraitionFail, message);
                     }
                 }
                 break;

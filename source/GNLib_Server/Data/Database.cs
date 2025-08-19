@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 
-namespace GameNet.Data
+namespace GameNetServer.Data
 {
     public static class Database
     {

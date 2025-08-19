@@ -1,14 +1,15 @@
 ﻿using System;
 using System.Threading.Tasks;
+using GameNet.Common;
 using Microsoft.Data.Sqlite;
 
-namespace GameNet.Data
+namespace GameNetServer.Data
 {
     public sealed class UserRepository
     {
         public async Task<int> CreateUserAsync(string username, string password)
         {
-            var hash = Passwords.Hash(password);
+            var hash = HashTool.Hash(password);
             using (var conn = Database.OpenConnection())
             {
                 await conn.OpenAsync().ConfigureAwait(false);
