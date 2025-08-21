@@ -7,20 +7,8 @@ using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace GameNet.Client
+namespace GameNetClient
 {
-    public sealed class ClientOptions
-    {
-        public string Host { get; set; } = "127.0.0.1";
-        public int Port { get; set; } = 9000;
-
-        public bool UseTls { get; set; } = true;
-        public string TlsTargetHost { get; set; } = "localhost"; // CN/SNI for cert validation
-        public bool AllowInvalidServerCertForTesting { get; set; } = false;
-
-        public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(30);
-    }
-
     public sealed class ClientConnection : IDisposable
     {
         private readonly ClientOptions _opt;
@@ -36,7 +24,6 @@ namespace GameNet.Client
         public event Action Disconnected;
         public event Action Connected;
         public event Action<Exception> ConnectFail;
-
 
         public ClientConnection(ClientOptions options) => _opt = options ?? new ClientOptions();
 
@@ -79,8 +66,6 @@ namespace GameNet.Client
                 //Console.WriteLine($"{ex.GetType()}!\n{ex.Message}");
                 ConnectFail?.Invoke(ex);
             }
-
-            
         }
 
         public async Task DisconnectAsync()
@@ -185,9 +170,6 @@ namespace GameNet.Client
                 await SendLargeAsync(type, source, payload.Length);
             }
         }
-
-
-        //=> Protocol.SendAsync(_stream, type, payload ?? Array.Empty<byte>(), NextSeq(), Protocol.FlagNone, _cts.Token);
 
         public async Task SendLargeAsync(MessageType type, Stream source, long totalLength, int chunkSize = 256 * 1024)
         {

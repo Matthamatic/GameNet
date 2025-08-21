@@ -1,6 +1,6 @@
 ﻿using Isopoh.Cryptography.Argon2;
 
-namespace GameNet.Common
+namespace GameNetServer.Data
 {
     public static class HashTool
     {
@@ -14,4 +14,5 @@ namespace GameNet.Common
             return Argon2.Verify(encodedHash, password);
         }
     }
+
 }

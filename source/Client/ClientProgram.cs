@@ -1,5 +1,5 @@
-﻿using GameNet.Client;
-using GameNet.Common;
+﻿using GameNet.Common;
+using GameNetClient;
 using System;
 using System.Collections.Generic;
 using System.IO;
